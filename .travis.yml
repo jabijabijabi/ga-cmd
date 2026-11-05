@@ -1,0 +1,31 @@
+language: c
+
+git:
+  depth: 1
+
+script:
+  - cd src
+  - make test
+  - make clean && ./build.sh 1234567890123456
+  - make clean && ./build.sh && mkdir release && cp bin/ga-cmd release
+  - make codecov
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash) -X gcov
+
+addons:
+  apt:
+    packages:
+    - libpam0g-dev
+    - gcovr
+
+deploy:
+  provider: releases
+  api_key: $GITHUB_TOKEN
+  file:
+    - bin/ga-cmd
+    - ga-cmd-completion.sh
+  skip_cleanup: true
+  draft: true
+  on:
+    tags: true

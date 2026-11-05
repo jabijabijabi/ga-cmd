@@ -1,3 +1,4 @@
-[submodule "src/google-authenticator"]
-	path = src/google-authenticator
-	url = https://code.google.com/p/google-authenticator
+[submodule "src/google-authenticator-libpam"]
+	path = src/google-authenticator-libpam
+	url = https://github.com/google/google-authenticator-libpam.git
+	ignore = untracked

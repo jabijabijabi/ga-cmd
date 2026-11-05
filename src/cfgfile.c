@@ -1,52 +1,97 @@
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "cfgfile.h"
+
 /*-----------------------------------------------------------------*/
 int
-load_key(char *filename, char *keybuf, int keybuf_len)
+proc_file(FILE *fp, cfg_file_key_handler cfk_service, void *user_data)
 {
-int result = 0;
-FILE *fp;
+char linebuf[1024];
+int result;
 struct stat s;
 
-if (filename == NULL || keybuf == NULL)
+if (fstat(fileno(fp), &s) || s.st_mode & (S_IRWXO | S_IRWXG))
 	{
-	return 1;
-	}
-
-fp = fopen(filename, "r");
-if (fp != NULL)
-	{
-	if (fstat(fileno(fp), &s))
-		{
-		result = 1;
-		}
-	else
-		{
-		if (s.st_mode & (S_IRWXO | S_IRWXG))
-			{
-			result = 1;
-			}
-		else
-			{
-			int bytes_read;
-			memset(keybuf, 0, keybuf_len);
-			bytes_read = fread(keybuf, sizeof(char), keybuf_len - 1, fp);
-			fclose(fp);
-			if (bytes_read != 16)
-				{
-				result = 1;
-				}
-			}
-		}
+	result = CFG_INVALID_FILE_PERMS;
 	}
 else
 	{
-	result = 1;
+	result = CFG_KEY_NOT_FOUND;
+
+	while (fgets(linebuf, sizeof(linebuf), fp) != NULL)
+		{
+		int buflen;
+		char *tag;
+		char *key;
+
+		/* Trim newline */
+		buflen = strlen(linebuf) - 1;
+		if (linebuf[buflen] == '\n')
+			{
+			linebuf[buflen] = '\0';
+			}
+
+		/* Skip long lines */
+		if (strlen(linebuf) == sizeof(linebuf) - 1)
+			{
+			char *retcode;
+
+			do
+				{
+				retcode = fgets(linebuf, sizeof(linebuf), fp);
+				} while (strlen(linebuf) == sizeof(linebuf) - 1 && retcode != NULL);
+			}
+		else
+			{
+			tag = strtok(linebuf, "=");
+			key = strtok(NULL, "\n");
+
+			if (tag != NULL && key != NULL)
+				{
+				result = cfk_service(tag, key, user_data);
+
+				if (result < 0)
+					{
+					break;
+					}
+				}
+			}
+		}
+
+		result = cfk_service(NULL, NULL, user_data);
+	}
+
+return result;
+}
+
+/*-----------------------------------------------------------------*/
+/* Returns:
+ * CFG_KEY_FOUND: key retrieved
+ * CFG_KEY_NOT_FOUND: key not found
+ * CFG_MISC_ERROR: misc error
+ * CFG_FILE_OPEN_ERROR: file not opened
+ * CFG_INVALID_FILE_PERMS: invalid file permissions
+ */
+int
+parse_key_file(char *filename, cfg_file_key_handler cfk_service, void *user_data)
+{
+int result = CFG_KEY_FOUND;
+FILE *fp;
+
+fp = fopen(filename, "r");
+if (!fp)
+	{
+	result = CFG_FILE_OPEN_ERROR;
+	}
+else
+	{
+	result = proc_file(fp, cfk_service, user_data);
+	fclose(fp);
 	}
 
 return result;

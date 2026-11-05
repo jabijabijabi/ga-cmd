@@ -1,169 +1,68 @@
-#include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
-#include "cfgfile.h"
+#include <stdlib.h>
+
+#include "cfgfile_test.h"
+#include "codegen_test.h"
+#include "keyhide_test.h"
+#include "outputcode_test.h"
+#include "verf_test.h"
+#include "cliflags_test.h"
 
 /*-----------------------------------------------------------------*/
 void
-show_result(int status, char *desc)
+show_test_result(int status, char *desc)
 {
-printf("%s: %s\n", status ? "FAIL" : "PASS", desc);
-}
-
-/*-----------------------------------------------------------------*/
-int
-TEST_get_config_filename()
-{
-char *fn;
-int result = 1;
-
-fn = get_config_filename("test");
-result = fn == NULL;
-show_result(result, "get_config_filename()");
-
-return result;
-}
-
-/*-----------------------------------------------------------------*/
-int
-TEST_load_key()
-{
-char *test_key = "7777777777777777";
-char *key_filename = "keyfile";
-char key[17];
-int result;
-FILE *fp;
-mode_t saved_umask;
-
-/* No file */
-result = load_key(key_filename, key, sizeof(key));
-show_result(!result, "load_key(<file does not exist>)");
-
-/* Bad group permissions */
-saved_umask = umask(007);
-fp = fopen(key_filename, "w");
-if (fp != NULL) fclose(fp);
-result = load_key(key_filename, key, sizeof(key));
-remove(key_filename);
-show_result(!result, "load_key(<bad group perms>)");
-
-/* Bad world permissions */
-umask(070);
-fp = fopen(key_filename, "w");
-if (fp != NULL) fclose(fp);
-result = load_key(key_filename, key, sizeof(key));
-remove(key_filename);
-show_result(!result, "load_key(<bad world perms>)");
-
-/* No data */
-umask(077);
-fp = fopen(key_filename, "w");
-if (fp != NULL) fclose(fp);
-result = load_key(key_filename, key, sizeof(key));
-remove(key_filename);
-show_result(!result, "load_key(<no data in file>)");
-
-/* Good file and key */
-
-fp = fopen(key_filename, "w");
-if (fp != NULL)
+if (status)
 	{
-	fputs(test_key, fp);
-	fclose(fp);
+	printf("FAIL: %s\n", desc);
 	}
-
-result = load_key(key_filename, key, sizeof(key));
-remove(key_filename);
-
-if (result == 0)
-	{
-	result = strcmp(key, test_key);
-	}
-
-show_result(result, "load_key(\"keyfile\", \"1234567890123456\")");
-
-umask(saved_umask);
-
-return result;
-}
-
-/*-----------------------------------------------------------------*/
-int
-TEST_reveal_key()
-{
-char key[] = { 0x64,0x67,0x66,0x61,0x60,0x63,0x62,0x6D,0x6C,0x65,0x64,0x67,
-	0x66,0x61,0x60,0x63,0x00 };
-reveal_key(key);
-int result = strcmp(key, "1234567890123456");
-show_result(result, "reveal_key(char [])");
-
-return 0;
-}
-
-/*-----------------------------------------------------------------*/
-int
-TEST_hide_key()
-{
-int result;
-char hidden_key[85];
-
-/* Test for computing bytes needed */
-result = hide_key("1234567890123456", NULL, 0) == 85 ? 0 : 1;
-show_result(result, "hide_key(\"1234567890123456\", NULL, 0)");
-
-/* Test for generating obfuscated key */
-hide_key("1234567890123456", hidden_key, sizeof(hidden_key));
-result = strcmp(hidden_key,
-	"0x64,0x67,0x66,0x61,0x60,0x63,0x62,0x6D,0x6C,0x65,0x64,0x67,"
-	"0x66,0x61,0x60,0x63,0x00");
-show_result(result, "hide_key(\"1234567890123456\", hidden_key, 85)");
-
-return 0;
-}
-
-/*-----------------------------------------------------------------*/
-int
-TEST_gen_verf_code()
-{
-char key[] = "A1B2C3D4E5F61234";
-int result;
-
-result = gen_verf_code(key, 10000) == 535137 ? 0 : 1;
-show_result(result, "gen_verf_code()");
-
-return (0);
 }
 
 /*-----------------------------------------------------------------*/
 int
 main()
 {
+int exit_code = EXIT_SUCCESS;
 typedef int (*ptr_test_func)(void);
+struct test_routine {
+	ptr_test_func test_func;
+	char *description;
+};
+struct test_routine *test_routine_stepper;
+struct test_routine test_routines[] = {
+	{ TEST_gen_verf_code, "TEST_gen_verf_code" },
+	{ TEST_hide_and_reveal_key, "TEST_hide_and_reveal_key" },
+	{ TEST_get_config_filename, "TEST_get_config_filename" },
+	{ TEST_proc_file, "TEST_proc_file" },
+	{ TEST_parse_key_file, "TEST_parse_key_file" },
+	{ TEST_key_verf, "TEST_key_verf" },
+	{ TEST_pam_overrides, "TEST_pam_overrides" },
+	{ TEST_output_code_from_args, "TEST_output_code_from_args" },
+	{ TEST_proc_cli_flags, "TEST_proc_cli_flags" },
+	{ NULL, NULL }
+};
 
-ptr_test_func *test_func;
-ptr_test_func test_funcs[] =
+test_routine_stepper = test_routines;
+while ((*test_routine_stepper).test_func != NULL)
 	{
-	TEST_gen_verf_code,
-	TEST_hide_key,
-	TEST_reveal_key,
-	TEST_load_key,
-	TEST_get_config_filename,
-	NULL
-	};
-
-test_func = test_funcs;
-while (*test_func != NULL)
-{
 	int ret;
+	char *text_result;
 
-	ret = (*test_func)();
+	ret = (*test_routine_stepper).test_func();
 	if (ret)
 		{
-		return EXIT_FAILURE;
+		exit_code = EXIT_FAILURE;
+		text_result = "FAILED";
+		}
+	else
+		{
+		text_result = "PASSED";
 		}
 
-	test_func++;
-}
+	printf("%s: %s\n", text_result, (*test_routine_stepper).description);
 
-return EXIT_SUCCESS;
+	test_routine_stepper++;
+	}
+
+return exit_code;
 }
